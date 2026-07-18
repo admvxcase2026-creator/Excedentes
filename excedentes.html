@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle de Excedentes</title>
+<style>
+  :root{
+    --ink:#14181d;
+    --steel:#5b6672;
+    --line:#d8dde3;
+    --panel:#ffffff;
+    --bg:#eef1f4;
+    --amber:#e08600;
+    --amber-soft:#fff4e0;
+    --green:#1f7a4d;
+    --red:#c0392b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;padding:20px}
+  .wrap{max-width:1220px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:18px;flex-wrap:wrap}
+  h1{font-size:17px;font-weight:700;letter-spacing:-.2px;text-transform:uppercase}
+  header .sub{font-family:var(--mono);font-size:11px;color:var(--steel);text-transform:uppercase;letter-spacing:.8px}
+  header .count{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--steel)}
+  header .total{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green)}
+
+  .tabs{display:flex;gap:2px;margin-bottom:-1px;flex-wrap:wrap}
+  .tab{border:1px solid var(--line);border-bottom:none;background:#e2e6eb;color:var(--steel);
+       padding:8px 16px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;font-family:var(--sans)}
+  .tab.on{background:var(--panel);color:var(--ink);box-shadow:inset 0 3px 0 var(--amber)}
+
+  .panel{background:var(--panel);border:1px solid var(--line);padding:20px}
+
+  .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+  .f{display:flex;flex-direction:column;gap:5px}
+  .f.span2{grid-column:span 2}
+  .f.span3{grid-column:span 3}
+  .f.span6{grid-column:span 6}
+  label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--steel)}
+  label small{font-weight:500;text-transform:none;letter-spacing:0;color:#98a2ad}
+  input,select,textarea{border:1px solid var(--line);background:#fbfcfd;padding:9px 10px;font-size:13px;
+               font-family:var(--sans);color:var(--ink);border-radius:2px;width:100%}
+  textarea{font-family:var(--mono);font-size:12px;line-height:1.6;resize:vertical;min-height:130px}
+  input.code{font-family:var(--mono);letter-spacing:.5px}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--amber);outline-offset:-1px;background:#fff}
+
+  .actions{display:flex;gap:8px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px dashed var(--line);flex-wrap:wrap}
+  button{font-family:var(--sans);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+         border:1px solid var(--ink);background:var(--ink);color:#fff;padding:9px 18px;border-radius:2px;cursor:pointer}
+  button.ghost{background:transparent;color:var(--ink)}
+  button.ghost:hover{background:var(--amber-soft);border-color:var(--amber)}
+  button:hover{background:#2b323b}
+  .hint{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--steel)}
+
+  .toolbar{display:flex;gap:8px;margin:18px 0 10px;flex-wrap:wrap}
+  .toolbar input{max-width:300px}
+  .toolbar select{max-width:190px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--steel);text-align:left;
+     padding:8px 10px;border-bottom:2px solid var(--ink);white-space:nowrap}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tbody tr:hover{background:var(--amber-soft)}
+  td.m{font-family:var(--mono);font-size:12px}
+  td.val{font-family:var(--mono);font-size:12px;text-align:right;font-weight:600;white-space:nowrap}
+  th.r{text-align:right}
+  tfoot td{border-top:2px solid var(--ink);border-bottom:none;font-weight:700;font-family:var(--mono);font-size:12px}
+  .tag{display:inline-block;background:var(--amber-soft);border:1px solid #f0d09a;color:#8a5200;
+       padding:2px 8px;border-radius:2px;font-size:11px;font-weight:600}
+  .who{display:inline-block;background:#eaf1f7;border:1px solid #c9d9e6;color:#2c5470;
+       padding:2px 8px;border-radius:2px;font-size:11px;font-weight:600}
+  .del{border:none;background:none;color:var(--red);font-size:16px;padding:0 6px;cursor:pointer;line-height:1}
+  .del:hover{background:none}
+  .empty{padding:36px;text-align:center;color:var(--steel);font-family:var(--mono);font-size:12px;border:1px dashed var(--line)}
+  .msg{font-family:var(--mono);font-size:11px;color:var(--green);font-weight:600}
+  .hidden{display:none}
+
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+  .card{border:1px solid var(--line);border-left:3px solid var(--amber);padding:12px 14px;background:#fbfcfd}
+  .card .k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--steel)}
+  .card .v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:4px;letter-spacing:-.5px}
+  .card .d{font-size:11px;color:var(--steel);margin-top:2px}
+  .card.money{border-left-color:var(--green)} .card.money .v{color:var(--green)}
+  .rank{position:relative}
+  .rank .bar{position:absolute;left:0;top:2px;bottom:2px;background:var(--amber-soft);z-index:0}
+  .rank span{position:relative;z-index:1}
+  .pos{font-family:var(--mono);font-size:11px;color:var(--steel);font-weight:700;width:24px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--steel);margin:22px 0 8px;font-weight:700}
+  @media(max-width:880px){.grid{grid-template-columns:1fr 1fr}.f.span2,.f.span3,.f.span6{grid-column:span 2}.cards{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Controle de Excedentes</h1>
+    <span class="sub">Expedição / Logística</span>
+    <span class="count" id="count">0 registros</span>
+    <span class="total" id="total">R$ 0,00</span>
+  </header>
+
+  <div class="tabs">
+    <button class="tab on" data-tab="exc">Lançamento</button>
+    <button class="tab" data-tab="hist">Histórico</button>
+    <button class="tab" data-tab="prod">Produtos</button>
+    <button class="tab" data-tab="dest">Destinos</button>
+    <button class="tab" data-tab="resp">Responsáveis</button>
+    <button class="tab" data-tab="mot">Motivos</button>
+  </div>
+
+  <!-- LANÇAMENTO -->
+  <section class="panel" id="tab-exc">
+    <div class="grid">
+      <div class="f">
+        <label for="numero">Nº do movimento</label>
+        <input id="numero" class="code" placeholder="EX-0001">
+      </div>
+      <div class="f">
+        <label for="data">Data de envio</label>
+        <input id="data" type="date">
+      </div>
+      <div class="f span2">
+        <label for="destino">Destino</label>
+        <select id="destino"></select>
+      </div>
+      <div class="f span2">
+        <label for="responsavel">Responsável pelo envio</label>
+        <select id="responsavel"></select>
+      </div>
+
+      <div class="f">
+        <label for="cod">Cód <small>· puxa o produto</small></label>
+        <input id="cod" class="code" placeholder="Ex.: 1024" list="codigos" autocomplete="off">
+        <datalist id="codigos"></datalist>
+      </div>
+      <div class="f span2">
+        <label for="produto">Produto</label>
+        <input id="produto" placeholder="Digite o cód ou o nome do produto">
+      </div>
+      <div class="f">
+        <label for="valor">Valor (R$)</label>
+        <input id="valor" class="code" placeholder="0,00" inputmode="decimal">
+      </div>
+      <div class="f">
+        <label for="barras">Código de barras</label>
+        <input id="barras" class="code" placeholder="Bipe e Enter">
+      </div>
+      <div class="f">
+        <label for="motivo">Motivo</label>
+        <select id="motivo"></select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="salvar">Registrar excedente</button>
+      <button class="ghost" id="limpar">Limpar campos</button>
+      <span class="msg" id="msgSalvo"></span>
+      <span class="hint">Enter no código de barras registra direto</span>
+    </div>
+
+    <h2>Últimos lançamentos</h2>
+    <table>
+      <thead><tr><th>Nº</th><th>Cód</th><th>Produto</th><th class="r">Valor</th><th>Destino</th><th>Responsável</th></tr></thead>
+      <tbody id="ultimos"></tbody>
+    </table>
+    <div class="empty" id="vazioUlt">Nenhum excedente registrado ainda.</div>
+  </section>
+
+  <!-- HISTÓRICO -->
+  <section class="panel hidden" id="tab-hist">
+    <div class="cards">
+      <div class="card"><div class="k">Registros</div><div class="v" id="cRegs">0</div><div class="d" id="cPeriodo">—</div></div>
+      <div class="card money"><div class="k">Total em valor</div><div class="v" id="cTotal">R$ 0,00</div><div class="d" id="cMedia">média R$ 0,00</div></div>
+      <div class="card"><div class="k">Cód mais registrado</div><div class="v" id="cTop">—</div><div class="d" id="cTopDesc">—</div></div>
+      <div class="card"><div class="k">Destino que mais recebeu</div><div class="v" id="cDest" style="font-size:14px">—</div><div class="d" id="cDestDesc">—</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input id="busca" placeholder="Filtrar por nº, cód, produto, código de barras…">
+      <select id="fDest"></select>
+      <select id="fResp"></select>
+      <select id="fMot"></select>
+      <button class="ghost" id="csv">Exportar CSV</button>
+      <button class="ghost" id="limpaFiltro">Limpar filtros</button>
+    </div>
+
+    <table id="tabela">
+      <thead>
+        <tr>
+          <th>Nº</th><th>Data</th><th>Destino</th><th>Responsável</th><th>Cód</th><th>Produto</th>
+          <th class="r">Valor</th><th>Código de barras</th><th>Motivo</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="corpo"></tbody>
+      <tfoot id="rodape" class="hidden">
+        <tr><td colspan="6" style="text-align:right">Total filtrado</td>
+            <td class="val" id="totalFiltro">R$ 0,00</td><td colspan="3"></td></tr>
+      </tfoot>
+    </table>
+    <div class="empty" id="vazio">Nenhum excedente registrado.</div>
+
+    <h2>Top 10 códigos mais registrados <small style="text-transform:none;letter-spacing:0;font-weight:500">· respeita os filtros acima</small></h2>
+    <table>
+      <thead><tr><th style="width:24px">#</th><th>Cód</th><th>Produto</th><th class="r">Registros</th><th class="r">Valor acumulado</th></tr></thead>
+      <tbody id="corpoTop"></tbody>
+    </table>
+    <div class="empty hidden" id="vazioTop">Sem dados para ranquear.</div>
+  </section>
+
+  <!-- PRODUTOS -->
+  <section class="panel hidden" id="tab-prod">
+    <div class="grid">
+      <div class="f span6">
+        <label for="loteProd">Cadastro em massa <small>· um por linha, no formato COD ; PRODUTO ; VALOR</small></label>
+        <textarea id="loteProd" placeholder="1024 ; Capa Silicone iPhone 15 ; 49,90&#10;1025 ; Película 3D iPhone 15 ; 29,90&#10;1026 ; Carregador Turbo 20W ; 89,90"></textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="addLoteProd">Cadastrar produtos</button>
+      <button class="ghost" id="limpaLoteProd">Limpar caixa</button>
+      <span class="msg" id="msgProd"></span>
+      <span class="hint">Cód repetido atualiza o produto já cadastrado</span>
+    </div>
+    <div class="toolbar"><input id="buscaProd" placeholder="Filtrar produtos…"></div>
+    <table>
+      <thead><tr><th>Cód</th><th>Produto</th><th class="r">Valor</th><th>Uso</th><th></th></tr></thead>
+      <tbody id="corpoProd"></tbody>
+    </table>
+    <div class="empty hidden" id="vazioProd">Nenhum produto cadastrado.</div>
+  </section>
+
+  <!-- DESTINOS -->
+  <section class="panel hidden" id="tab-dest">
+    <div class="grid">
+      <div class="f span6">
+        <label for="loteDest">Cadastro em massa <small>· um destino por linha</small></label>
+        <textarea id="loteDest" placeholder="Salvador Shopping&#10;Shopping Barra&#10;Shopping da Bahia&#10;Centro de Distribuição"></textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="addLoteDest">Cadastrar destinos</button>
+      <button class="ghost" id="limpaLoteDest">Limpar caixa</button>
+      <span class="msg" id="msgDest"></span>
+    </div>
+    <table style="margin-top:18px">
+      <thead><tr><th>Destino</th><th>Uso</th><th></th></tr></thead>
+      <tbody id="corpoDest"></tbody>
+    </table>
+    <div class="empty hidden" id="vazioDest">Nenhum destino cadastrado.</div>
+  </section>
+
+  <!-- RESPONSÁVEIS -->
+  <section class="panel hidden" id="tab-resp">
+    <div class="grid">
+      <div class="f span3">
+        <label for="novoResp">Novo responsável</label>
+        <input id="novoResp" placeholder="Nome de quem envia">
+      </div>
+      <div class="f span3">
+        <label for="loteResp">Cadastro em massa <small>· um nome por linha</small></label>
+        <textarea id="loteResp" style="min-height:96px" placeholder="Rodrigo Pereira&#10;Suiane Lopes&#10;Raquel França"></textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="addResp">Cadastrar responsável</button>
+      <button id="addLoteResp" class="ghost">Cadastrar lista</button>
+      <span class="msg" id="msgResp"></span>
+    </div>
+    <table style="margin-top:18px">
+      <thead><tr><th>Responsável</th><th>Envios</th><th class="r">Valor enviado</th><th></th></tr></thead>
+      <tbody id="corpoResp"></tbody>
+    </table>
+    <div class="empty hidden" id="vazioResp">Nenhum responsável cadastrado.</div>
+  </section>
+
+  <!-- MOTIVOS -->
+  <section class="panel hidden" id="tab-mot">
+    <div class="grid">
+      <div class="f span2">
+        <label for="novoMotivo">Novo motivo</label>
+        <input id="novoMotivo" placeholder="Ex.: Excedente de grade">
+      </div>
+      <div class="f span3">
+        <label for="descMotivo">Descrição (opcional)</label>
+        <input id="descMotivo" placeholder="Quando usar este motivo">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="addMotivo">Cadastrar motivo</button>
+      <span class="hint">Motivos cadastrados aparecem no formulário de lançamento</span>
+    </div>
+    <table style="margin-top:18px">
+      <thead><tr><th>Motivo</th><th>Descrição</th><th>Uso</th><th></th></tr></thead>
+      <tbody id="corpoMotivos"></tbody>
+    </table>
+    <div class="empty hidden" id="vazioMotivos">Nenhum motivo cadastrado.</div>
+  </section>
+
+</div>
+
+<script>
+/* ---- estado (em memória; troque por Supabase p/ persistir) ---- */
+let produtos = [
+  {cod:"1024", nome:"Capa Silicone iPhone 15", valor:49.90},
+  {cod:"1025", nome:"Película 3D iPhone 15",   valor:29.90},
+  {cod:"1026", nome:"Carregador Turbo 20W",    valor:89.90}
+];
+let destinos = ["Salvador Shopping","Shopping Barra","Shopping da Bahia","Centro de Distribuição"];
+let responsaveis = ["Rodrigo Pereira","Suiane Lopes","Raquel França","Felipe Santana","Amanda Menezes"];
+let motivos = [
+  {id:1, nome:"Excedente de grade", desc:"Sobra acima do mix da loja"},
+  {id:2, nome:"Baixo giro",         desc:"Produto parado no estoque"},
+  {id:3, nome:"Remanejamento",      desc:"Transferência entre lojas"},
+  {id:4, nome:"Devolução ao CD",    desc:"Retorno ao centro de distribuição"}
+];
+let itens = [];
+let seqMotivo = 5, seqMov = 1;
+
+const $ = id => document.getElementById(id);
+
+/* ---- abas ---- */
+const ABAS = ['exc','hist','prod','dest','resp','mot'];
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  ABAS.forEach(k => $('tab-'+k).classList.toggle('hidden', k !== t.dataset.tab));
+});
+
+/* ---- moeda ---- */
+const brl = n => (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const num = s => {
+  s = String(s ?? '').trim().replace(/[R$\s]/g,'');
+  if(!s) return 0;
+  if(s.includes(',')) s = s.replace(/\./g,'').replace(',','.');
+  return parseFloat(s) || 0;
+};
+
+/* ---- cód -> produto automático ---- */
+$('cod').addEventListener('input', () => {
+  const p = produtos.find(p => p.cod.toLowerCase() === $('cod').value.trim().toLowerCase());
+  if(p){ $('produto').value = p.nome; $('valor').value = p.valor.toFixed(2).replace('.',','); }
+});
+$('cod').addEventListener('keydown', e => { if(e.key === 'Enter') $('barras').focus(); });
+$('valor').addEventListener('blur', () => { if($('valor').value) $('valor').value = num($('valor').value).toFixed(2).replace('.',','); });
+
+/* ---- produtos ---- */
+$('addLoteProd').onclick = () => {
+  const linhas = $('loteProd').value.split('\n').map(l => l.trim()).filter(Boolean);
+  if(!linhas.length) return alerta('loteProd','Cole os produtos na caixa, um por linha.');
+  let novos = 0, atual = 0, erros = [];
+  linhas.forEach((l,i) => {
+    const p = l.split(/[;\t|]/).map(x => x.trim());
+    if(p.length < 2 || !p[0] || !p[1]) return erros.push(i+1);
+    const item = {cod:p[0], nome:p[1], valor:num(p[2])};
+    const ex = produtos.findIndex(x => x.cod.toLowerCase() === item.cod.toLowerCase());
+    if(ex >= 0){ produtos[ex] = item; atual++; } else { produtos.push(item); novos++; }
+  });
+  $('loteProd').value = '';
+  $('msgProd').textContent = `${novos} cadastrado(s), ${atual} atualizado(s)` + (erros.length ? ` · linhas ignoradas: ${erros.join(', ')}` : '');
+  render();
+};
+$('limpaLoteProd').onclick = () => { $('loteProd').value = ''; $('msgProd').textContent = ''; };
+$('buscaProd').oninput = render;
+function delProd(cod){
+  if(!confirm('Excluir este produto do cadastro?')) return;
+  produtos = produtos.filter(p => p.cod !== cod); render();
+}
+
+/* ---- destinos ---- */
+$('addLoteDest').onclick = () => {
+  const linhas = $('loteDest').value.split('\n').map(l => l.trim()).filter(Boolean);
+  if(!linhas.length) return alerta('loteDest','Cole os destinos na caixa, um por linha.');
+  let novos = 0;
+  linhas.forEach(d => { if(!destinos.some(x => x.toLowerCase() === d.toLowerCase())){ destinos.push(d); novos++; } });
+  destinos.sort((a,b) => a.localeCompare(b,'pt-BR'));
+  $('loteDest').value = '';
+  $('msgDest').textContent = `${novos} cadastrado(s), ${linhas.length - novos} já existia(m)`;
+  render();
+};
+$('limpaLoteDest').onclick = () => { $('loteDest').value = ''; $('msgDest').textContent = ''; };
+function delDest(nome){
+  if(!confirm('Excluir este destino do cadastro?')) return;
+  destinos = destinos.filter(d => d !== nome); render();
+}
+
+/* ---- responsáveis ---- */
+function addResps(lista){
+  let novos = 0;
+  lista.forEach(r => { if(r && !responsaveis.some(x => x.toLowerCase() === r.toLowerCase())){ responsaveis.push(r); novos++; } });
+  responsaveis.sort((a,b) => a.localeCompare(b,'pt-BR'));
+  $('msgResp').textContent = `${novos} cadastrado(s), ${lista.length - novos} já existia(m)`;
+  render();
+}
+$('addResp').onclick = () => {
+  const n = $('novoResp').value.trim();
+  if(!n) return alerta('novoResp','Informe o nome do responsável.');
+  addResps([n]); $('novoResp').value = '';
+};
+$('addLoteResp').onclick = () => {
+  const l = $('loteResp').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if(!l.length) return alerta('loteResp','Cole os nomes na caixa, um por linha.');
+  addResps(l); $('loteResp').value = '';
+};
+function delResp(nome){
+  const uso = itens.filter(i => i.responsavel === nome).length;
+  if(uso && !confirm(`Este responsável está em ${uso} envio(s). Excluir mesmo assim?`)) return;
+  responsaveis = responsaveis.filter(r => r !== nome); render();
+}
+
+/* ---- motivos ---- */
+$('addMotivo').onclick = () => {
+  const nome = $('novoMotivo').value.trim();
+  if(!nome) return alerta('novoMotivo','Informe o nome do motivo.');
+  if(motivos.some(m => m.nome.toLowerCase() === nome.toLowerCase())) return alerta('novoMotivo','Esse motivo já está cadastrado.');
+  motivos.push({id: seqMotivo++, nome, desc: $('descMotivo').value.trim()});
+  $('novoMotivo').value = ''; $('descMotivo').value = ''; render();
+};
+function delMotivo(id){
+  const uso = itens.filter(v => v.motivoId === id).length;
+  if(uso && !confirm(`Este motivo está em ${uso} registro(s). Excluir mesmo assim?`)) return;
+  motivos = motivos.filter(m => m.id !== id); render();
+}
+
+/* ---- registro ---- */
+$('salvar').onclick = salvar;
+$('barras').addEventListener('keydown', e => { if(e.key === 'Enter') salvar(); });
+
+function salvar(){
+  const numero  = $('numero').value.trim() || 'EX-' + String(seqMov).padStart(4,'0');
+  const data    = $('data').value;
+  const destino = $('destino').value;
+  const responsavel = $('responsavel').value;
+  const cod     = $('cod').value.trim();
+  const produto = $('produto').value.trim();
+  const valor   = num($('valor').value);
+  const barras  = $('barras').value.trim();
+  const motivoId= Number($('motivo').value);
+
+  if(!data)        return alerta('data','Informe a data de envio.');
+  if(!destino)     return alerta('destino','Selecione o destino.');
+  if(!responsavel) return alerta('responsavel','Selecione o responsável pelo envio.');
+  if(!produto)     return alerta('produto','Informe o produto ou digite um cód cadastrado.');
+  if(!barras)      return alerta('barras','Bipe ou digite o código de barras.');
+  if(!motivoId)    return alerta('motivo','Selecione um motivo.');
+
+  itens.unshift({numero, data, destino, responsavel, cod, produto, valor, barras, motivoId});
+  seqMov++;
+  ['numero','cod','produto','valor','barras'].forEach(i => $(i).value = '');
+  $('msgSalvo').textContent = `${numero} registrado · ${brl(valor)}`;
+  setTimeout(() => { $('msgSalvo').textContent = ''; }, 4000);
+  $('cod').focus();
+  render();
+}
+
+$('limpar').onclick = () => {
+  ['numero','cod','produto','valor','barras'].forEach(i => $(i).value = '');
+  $('motivo').value = ''; $('cod').focus();
+};
+['busca','fDest','fResp','fMot'].forEach(i => $(i).addEventListener('input', render));
+$('limpaFiltro').onclick = () => { ['busca','fDest','fResp','fMot'].forEach(i => $(i).value = ''); render(); };
+
+/* ---- filtros do histórico ---- */
+function filtrados(){
+  const q = $('busca').value.toLowerCase();
+  return itens.filter(m =>
+    [m.numero,m.destino,m.responsavel,m.cod,m.produto,m.barras,nomeMotivo(m.motivoId)].join(' ').toLowerCase().includes(q)
+    && (!$('fDest').value || m.destino === $('fDest').value)
+    && (!$('fResp').value || m.responsavel === $('fResp').value)
+    && (!$('fMot').value  || String(m.motivoId) === $('fMot').value));
+}
+
+/* ---- render ---- */
+function render(){
+  const optV = (arr, ph) => `<option value="">${ph}</option>` + arr.map(d => `<option>${esc(d)}</option>`).join('');
+  const keep = (el, html) => { const v = el.value; el.innerHTML = html; el.value = v; };
+
+  keep($('destino'),     optV(destinos, 'Selecione…'));
+  keep($('responsavel'), optV(responsaveis, 'Selecione…'));
+  keep($('motivo'), '<option value="">Selecione…</option>' + motivos.map(m => `<option value="${m.id}">${esc(m.nome)}</option>`).join(''));
+  $('codigos').innerHTML = produtos.map(p => `<option value="${esc(p.cod)}">${esc(p.nome)}</option>`).join('');
+
+  keep($('fDest'), optV(destinos, 'Todos os destinos'));
+  keep($('fResp'), optV(responsaveis, 'Todos os responsáveis'));
+  keep($('fMot'),  '<option value="">Todos os motivos</option>' + motivos.map(m => `<option value="${m.id}">${esc(m.nome)}</option>`).join(''));
+
+  // últimos lançamentos
+  $('ultimos').innerHTML = itens.slice(0,5).map(m => `<tr>
+    <td class="m">${esc(m.numero)}</td><td class="m">${esc(m.cod) || '—'}</td><td>${esc(m.produto)}</td>
+    <td class="val">${brl(m.valor)}</td><td>${esc(m.destino)}</td><td><span class="who">${esc(m.responsavel)}</span></td>
+  </tr>`).join('');
+  $('vazioUlt').classList.toggle('hidden', itens.length > 0);
+
+  // histórico
+  const lista = filtrados();
+  $('corpo').innerHTML = lista.map(m => `<tr>
+    <td class="m">${esc(m.numero)}</td>
+    <td class="m">${fmtData(m.data)}</td>
+    <td>${esc(m.destino)}</td>
+    <td><span class="who">${esc(m.responsavel)}</span></td>
+    <td class="m">${esc(m.cod) || '—'}</td>
+    <td>${esc(m.produto)}</td>
+    <td class="val">${brl(m.valor)}</td>
+    <td class="m">${esc(m.barras)}</td>
+    <td><span class="tag">${esc(nomeMotivo(m.motivoId))}</span></td>
+    <td style="text-align:right"><button class="del" onclick="delItem(${itens.indexOf(m)})" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazio').classList.toggle('hidden', lista.length > 0);
+  $('vazio').textContent = itens.length ? 'Nenhum registro corresponde aos filtros.' : 'Nenhum excedente registrado.';
+  $('rodape').classList.toggle('hidden', !lista.length);
+  $('totalFiltro').textContent = brl(soma(lista));
+  $('count').textContent = itens.length + (itens.length === 1 ? ' registro' : ' registros');
+  $('total').textContent = brl(soma(itens));
+
+  cards(lista);
+  topCodigos(lista);
+
+  // produtos
+  const qp = $('buscaProd').value.toLowerCase();
+  const lp = produtos.filter(p => (p.cod + ' ' + p.nome).toLowerCase().includes(qp));
+  $('corpoProd').innerHTML = lp.map(p => `<tr>
+    <td class="m"><span class="tag">${esc(p.cod)}</span></td><td>${esc(p.nome)}</td>
+    <td class="val">${brl(p.valor)}</td><td class="m">${itens.filter(i => i.cod === p.cod).length}</td>
+    <td style="text-align:right"><button class="del" onclick="delProd('${js(p.cod)}')" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazioProd').classList.toggle('hidden', lp.length > 0);
+
+  // destinos
+  $('corpoDest').innerHTML = destinos.map(d => `<tr>
+    <td>${esc(d)}</td><td class="m">${itens.filter(i => i.destino === d).length}</td>
+    <td style="text-align:right"><button class="del" onclick="delDest('${js(d)}')" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazioDest').classList.toggle('hidden', destinos.length > 0);
+
+  // responsáveis
+  $('corpoResp').innerHTML = responsaveis.map(r => {
+    const env = itens.filter(i => i.responsavel === r);
+    return `<tr><td><span class="who">${esc(r)}</span></td><td class="m">${env.length}</td>
+      <td class="val">${brl(soma(env))}</td>
+      <td style="text-align:right"><button class="del" onclick="delResp('${js(r)}')" title="Excluir">×</button></td></tr>`;
+  }).join('');
+  $('vazioResp').classList.toggle('hidden', responsaveis.length > 0);
+
+  // motivos
+  $('corpoMotivos').innerHTML = motivos.map(m => `<tr>
+    <td><span class="tag">${esc(m.nome)}</span></td><td>${esc(m.desc) || '—'}</td>
+    <td class="m">${itens.filter(v => v.motivoId === m.id).length}</td>
+    <td style="text-align:right"><button class="del" onclick="delMotivo(${m.id})" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazioMotivos').classList.toggle('hidden', motivos.length > 0);
+}
+
+/* ---- indicadores ---- */
+function cards(lista){
+  $('cRegs').textContent  = lista.length;
+  $('cTotal').textContent = brl(soma(lista));
+  $('cMedia').textContent = 'média ' + brl(lista.length ? soma(lista)/lista.length : 0);
+
+  const datas = lista.map(m => m.data).filter(Boolean).sort();
+  $('cPeriodo').textContent = datas.length ? `${fmtData(datas[0])} a ${fmtData(datas[datas.length-1])}` : '—';
+
+  const rk = ranking(lista);
+  $('cTop').textContent = rk.length ? rk[0].cod : '—';
+  $('cTopDesc').textContent = rk.length ? `${rk[0].qtd}× · ${rk[0].nome}` : '—';
+
+  const pd = {};
+  lista.forEach(m => pd[m.destino] = (pd[m.destino]||0) + 1);
+  const top = Object.entries(pd).sort((a,b) => b[1]-a[1])[0];
+  $('cDest').textContent = top ? top[0] : '—';
+  $('cDestDesc').textContent = top ? `${top[1]} registro(s)` : '—';
+}
+
+function ranking(lista){
+  const map = {};
+  lista.forEach(m => {
+    const k = m.cod || '(sem cód)';
+    if(!map[k]) map[k] = {cod:k, nome:m.produto, qtd:0, valor:0};
+    map[k].qtd++; map[k].valor += m.valor;
+  });
+  return Object.values(map).sort((a,b) => b.qtd - a.qtd || b.valor - a.valor);
+}
+
+function topCodigos(lista){
+  const rk = ranking(lista).slice(0,10);
+  const max = rk.length ? rk[0].qtd : 1;
+  $('corpoTop').innerHTML = rk.map((r,i) => `<tr>
+    <td class="pos">${String(i+1).padStart(2,'0')}</td>
+    <td class="m"><span class="tag">${esc(r.cod)}</span></td>
+    <td class="rank"><div class="bar" style="width:${(r.qtd/max*100).toFixed(1)}%"></div><span>${esc(r.nome)}</span></td>
+    <td class="val">${r.qtd}×</td>
+    <td class="val">${brl(r.valor)}</td>
+  </tr>`).join('');
+  $('vazioTop').classList.toggle('hidden', rk.length > 0);
+}
+
+function delItem(i){ itens.splice(i,1); render(); }
+
+/* ---- CSV ---- */
+$('csv').onclick = () => {
+  const lista = filtrados();
+  if(!lista.length) return alert('Não há excedentes para exportar.');
+  const linhas = [['Numero','Data','Destino','Responsavel','Cod','Produto','Valor','Codigo de barras','Motivo']]
+    .concat(lista.map(m => [m.numero, m.data, m.destino, m.responsavel, m.cod, m.produto, m.valor.toFixed(2).replace('.',','), m.barras, nomeMotivo(m.motivoId)]));
+  const csv = '\ufeff' + linhas.map(l => l.map(c => `"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'excedentes.csv';
+  a.click();
+};
+
+/* ---- utils ---- */
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const js  = s => String(s ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+const soma = l => l.reduce((s,m) => s + m.valor, 0);
+const nomeMotivo = id => (motivos.find(m => m.id === id) || {}).nome || 'Motivo excluído';
+const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
+function alerta(campo, msg){ alert(msg); $(campo).focus(); }
+
+$('data').value = new Date().toISOString().slice(0,10);
+render();
+</script>
+</body>
+</html>
