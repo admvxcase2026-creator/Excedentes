@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle de Excedentes</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%2314181d'/%3E%3Cpath d='M32 12 54 24v16L32 52 10 40V24z' fill='none' stroke='%23e08600' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M10 24l22 12 22-12M32 36v16' fill='none' stroke='%23e08600' stroke-width='4' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f3f4f7;--panel:#fff;--ink:#0f172a;--mut:#64748b;--line:#e6e9ef;--soft:#f7f8fa;
+    --acc:#e8820c;--acc-s:#fff3e3;--acc-i:#9a5200;--ok:#15803d;--ok-s:#e7f6ed;
+    --blue-s:#e8f0fe;--blue-i:#1e4fb5;--vio-s:#f0eafe;--vio-i:#5b3bb0;--red:#b42318;--red-s:#fdecec;
+    --sh:0 1px 2px rgba(15,23,42,.05),0 4px 16px rgba(15,23,42,.05);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  [data-theme="dark"]{
+    --bg:#0d1117;--panel:#151b23;--ink:#e8edf4;--mut:#8b97a7;--line:#252d38;--soft:#1a222c;
+    --acc:#f0a13a;--acc-s:#2e2412;--acc-i:#f3c27a;--ok:#4cc38a;--ok-s:#13281f;
+    --blue-s:#14233b;--blue-i:#8db4ff;--vio-s:#221b3a;--vio-i:#b9a4f5;--red:#ff9b90;--red-s:#331a19;
+    --sh:0 1px 2px rgba(0,0,0,.3);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.4;padding:26px;font-variant-numeric:tabular-nums;transition:background .15s,color .15s}
+  .wrap{max-width:1680px;margin:0 auto}
+
+  header{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+  .logo{width:38px;height:38px;border-radius:10px;background:var(--ink);display:grid;place-items:center;flex:none}
+  .logo svg{width:22px;height:22px}
+  h1{font-size:19px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+  header .sub{display:block;color:var(--mut);font-size:12.5px;font-weight:400;margin-top:1px;white-space:nowrap}
+  .hr{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header .count,header .total{background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:7px 14px;font-size:13px;color:var(--mut);box-shadow:var(--sh);white-space:nowrap}
+  header .total{font-weight:700;color:var(--ok)}
+  .theme{border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:99px;cursor:pointer;white-space:nowrap;text-transform:none;letter-spacing:0}
+  .theme:hover{background:var(--soft);opacity:1}
+
+  #status{position:fixed;right:16px;bottom:16px;z-index:50;font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--mut);
+          box-shadow:0 6px 20px rgba(0,0,0,.15);opacity:0;transform:translateY(6px);transition:.2s;pointer-events:none;white-space:nowrap}
+  #status.on{opacity:1;transform:none}
+  #status.ok{color:var(--ok);border-color:var(--ok)}
+  #status.err{color:var(--red);border-color:var(--red)}
+
+  .tabs{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;gap:2px;margin-bottom:16px;box-shadow:var(--sh);max-width:100%;overflow-x:auto}
+  .tab{border:0;background:transparent;color:var(--mut);padding:8px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap;text-transform:none;letter-spacing:0}
+  .tab:hover{opacity:1;color:var(--ink)}
+  .tab.on{background:var(--ink);color:var(--panel)}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:20px;margin-bottom:16px}
+  .sh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin-bottom:14px;white-space:nowrap;flex-wrap:wrap}
+  .sh::before{content:"";width:6px;height:16px;border-radius:3px;background:var(--acc);flex:none}
+  .sh em{font-style:normal;font-weight:400;color:var(--mut);font-size:12.5px;margin-left:4px}
+
+  /* campos: crescem pelo conteúdo, nunca cortam o texto */
+  .row{display:flex;flex-wrap:wrap;gap:14px}
+  .row .f{flex:1 1 auto}
+  .f{display:flex;flex-direction:column;gap:5px;min-width:0}
+  .f.w150{flex:0 0 150px}.f.w170{flex:0 0 170px}.f.grow{flex:3 1 340px}.f.full{flex:1 1 100%}
+  label{display:block;font-size:12px;font-weight:600;color:var(--mut);white-space:nowrap}
+  label small{font-weight:400;color:var(--mut);font-size:12px}
+  input,select,textarea{border:1px solid var(--line);background:var(--soft);padding:9px 12px;font-size:13.5px;font-family:var(--sans);color:var(--ink);border-radius:9px;width:100%;min-height:38px}
+  select{padding-right:30px}
+  textarea{font-family:var(--mono);font-size:12.5px;line-height:1.7;resize:vertical;min-height:130px;white-space:pre}
+  input.code{font-family:var(--mono)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-s);background:var(--panel)}
+  .resumo{display:flex;align-items:center;justify-content:center;background:var(--acc-s);color:var(--acc-i);border-radius:9px;padding:9px 14px;min-height:38px;font-weight:700;font-size:13px;white-space:nowrap;font-family:var(--mono)}
+
+  .actions{display:flex;gap:10px;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--line);flex-wrap:wrap}
+  button{font-family:var(--sans);font-size:13px;font-weight:700;border:1px solid var(--ink);background:var(--ink);color:var(--panel);padding:10px 18px;border-radius:9px;cursor:pointer;white-space:nowrap}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+  button.ghost:hover{background:var(--soft)}
+  button:hover{opacity:.88}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .hint{margin-left:auto;font-size:12.5px;color:var(--mut);white-space:nowrap}
+  .msg{font-size:12.5px;color:var(--ok);font-weight:600;white-space:nowrap}
+
+  .toolbar{display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap}
+  .toolbar input{flex:1 1 280px;min-width:240px}.toolbar select{flex:0 1 auto;width:auto;min-width:170px}
+
+  /* tabelas: tudo em uma linha, cabeçalho e valores centralizados; se faltar largura a tabela rola, nunca corta */
+  .tw{overflow-x:auto;max-width:100%}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{font-size:12px;font-weight:600;color:var(--mut);text-align:center;padding:10px 12px;background:var(--soft);white-space:nowrap;border-bottom:1px solid var(--line)}
+  th:first-child{border-radius:9px 0 0 9px}th:last-child{border-radius:0 9px 9px 0}
+  td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle;text-align:center;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover td{background:var(--soft)}
+  td.m{font-family:var(--mono);font-size:12.5px}
+  td.val{font-family:var(--mono);font-size:12.5px;font-weight:600}
+  th.r{text-align:center}
+  td.num{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--mut)}
+  tfoot td{border-top:1px solid var(--line);border-bottom:0;font-weight:700;font-family:var(--mono);font-size:12.5px}
+  .cod,.tag{display:inline-block;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font:600 12px var(--mono);white-space:nowrap}
+  .chip{display:inline-block;border-radius:99px;padding:3px 11px;font-size:12px;font-weight:600;white-space:nowrap}
+  .chip.c0{background:var(--acc-s);color:var(--acc-i)}.chip.c1{background:var(--blue-s);color:var(--blue-i)}.chip.c2{background:var(--vio-s);color:var(--vio-i)}.chip.c3{background:var(--ok-s);color:var(--ok)}.chip.c4{background:var(--red-s);color:var(--red)}
+  .who{display:inline-flex;align-items:center;gap:8px;font-weight:500;white-space:nowrap}
+  .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+  .av.c0{background:var(--acc-s);color:var(--acc-i)}.av.c1{background:var(--blue-s);color:var(--blue-i)}.av.c2{background:var(--vio-s);color:var(--vio-i)}.av.c3{background:var(--ok-s);color:var(--ok)}.av.c4{background:var(--red-s);color:var(--red)}
+  .del{border:none;background:none;color:var(--mut);font-size:17px;padding:0 8px;cursor:pointer;line-height:1}
+  .del:hover{background:none;color:var(--red);opacity:1}
+  .empty{padding:34px;text-align:center;color:var(--mut);font-size:13px;border:1px dashed var(--line);border-radius:12px;white-space:nowrap}
+  .hidden{display:none}
+
+  .cards{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px}
+  .card{flex:1 1 230px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:16px;text-align:center;white-space:nowrap}
+  .card .k{font-size:12.5px;font-weight:500;color:var(--mut)}
+  .card .v{font-size:24px;font-weight:700;margin-top:4px;letter-spacing:-.02em}
+  .card .d{font-size:12px;color:var(--mut);margin-top:2px}
+  .card.money .v{color:var(--ok)}
+  .card .v.txt{font-size:18px;margin-top:8px;margin-bottom:5px}
+  .rank{position:relative}
+  .rank .bar{position:absolute;left:14px;bottom:5px;height:4px;min-width:6px;border-radius:99px;background:var(--acc);z-index:0;max-width:calc(100% - 28px)}
+  .rank span{position:relative;z-index:1}
+  .pos{font-family:var(--mono);font-size:12px;color:var(--mut);font-weight:700}
+  h2{font-size:13px;font-weight:700;margin:24px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+  h2::before{content:"";width:6px;height:16px;border-radius:3px;background:var(--acc);flex:none}
+  h2 small{font-weight:400;color:var(--mut);font-size:12.5px}
+  @media(max-width:720px){body{padding:14px}.hint{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo"><svg viewBox="0 0 64 64"><path d="M32 12 54 24v16L32 52 10 40V24z" fill="none" stroke="#e8820c" stroke-width="5" stroke-linejoin="round"/><path d="M10 24l22 12 22-12M32 36v16" fill="none" stroke="#e8820c" stroke-width="5" stroke-linejoin="round"/></svg></div>
+    <div><h1>Controle de Excedentes</h1><span class="sub">Expedição e logística</span></div>
+    <div class="hr">
+      <span class="count" id="count">carregando…</span>
+      <span class="total" id="total">R$ 0,00</span>
+      <button class="theme" id="btnTheme">🌙 Escuro</button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab on" data-tab="exc">Lançamento</button>
+    <button class="tab" data-tab="hist">Histórico</button>
+    <button class="tab" data-tab="prod">Produtos</button>
+    <button class="tab" data-tab="dest">Destinos</button>
+    <button class="tab" data-tab="resp">Responsáveis</button>
+    <button class="tab" data-tab="mot">Motivos</button>
+  </div>
+
+  <!-- LANÇAMENTO -->
+  <section id="tab-exc">
+    <div class="panel">
+      <div class="sh">Movimento</div>
+      <div class="row">
+        <div class="f w150"><label for="numero">Nº do movimento</label><input id="numero" class="code" placeholder="EX-0001"></div>
+        <div class="f w170"><label for="data">Data de envio</label><input id="data" type="date"></div>
+        <div class="f"><label for="destino">Destino</label><select id="destino"></select></div>
+        <div class="f"><label for="responsavel">Responsável pelo envio</label><select id="responsavel"></select></div>
+        <div class="f"><label for="motivo">Motivo</label><select id="motivo"></select></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sh">Produto<em>digite o código e o nome e o valor entram sozinhos</em></div>
+      <div class="row">
+        <div class="f w150">
+          <label for="cod">Código</label>
+          <input id="cod" class="code" placeholder="Ex.: 1024" list="codigos" autocomplete="off">
+          <datalist id="codigos"></datalist>
+        </div>
+        <div class="f grow"><label for="produto">Produto</label><input id="produto" placeholder="Digite o código ou o nome do produto"></div>
+        <div class="f w150"><label for="valor">Valor unitário (R$)</label><input id="valor" class="code" placeholder="0,00" inputmode="decimal"></div>
+        <div class="f"><label>Quantidade e total</label><div class="resumo" id="resumoQt">0 un · R$ 0,00</div></div>
+        <div class="f full">
+          <label for="barras">Códigos de barras <small>· um por linha, bipe cada unidade</small></label>
+          <textarea id="barras" class="code" style="min-height:84px" placeholder="Bipe cada unidade (um código por linha)"></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="pri" id="salvar">Registrar excedente</button>
+        <button class="ghost" id="limpar">Limpar campos</button>
+        <span class="msg" id="msgSalvo"></span>
+        <span class="hint">Um código de barras por linha, um por unidade</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sh">Últimos lançamentos</div>
+      <div class="tw"><table>
+        <thead><tr><th>Nº</th><th>Cód</th><th>Produto</th><th class="r">Qtd</th><th class="r">Valor</th><th>Destino</th><th>Responsável</th></tr></thead>
+        <tbody id="ultimos"></tbody>
+      </table></div>
+      <div class="empty" id="vazioUlt">Nenhum excedente registrado ainda.</div>
+    </div>
+  </section>
+
+  <!-- HISTÓRICO -->
+  <section class="hidden" id="tab-hist">
+    <div class="cards">
+      <div class="card"><div class="k">Registros</div><div class="v" id="cRegs">0</div><div class="d" id="cPeriodo">—</div></div>
+      <div class="card money"><div class="k">Total em valor</div><div class="v" id="cTotal">R$ 0,00</div><div class="d" id="cMedia">média R$ 0,00</div></div>
+      <div class="card"><div class="k">Cód mais registrado</div><div class="v" id="cTop">—</div><div class="d" id="cTopDesc">—</div></div>
+      <div class="card"><div class="k">Destino que mais recebeu</div><div class="v txt" id="cDest">—</div><div class="d" id="cDestDesc">—</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="sh">Registros</div>
+      <div class="toolbar">
+        <input id="busca" placeholder="Filtrar por nº, cód, produto, código de barras…">
+        <select id="fDest"></select>
+        <select id="fResp"></select>
+        <select id="fMot"></select>
+        <button class="ghost" id="csv">Exportar CSV</button>
+        <button class="ghost" id="limpaFiltro">Limpar filtros</button>
+      </div>
+      <div class="tw"><table id="tabela">
+        <thead>
+          <tr><th>Nº</th><th>Data</th><th>Destino</th><th>Responsável</th><th>Cód</th><th>Produto</th>
+              <th class="r">Qtd</th><th class="r">Valor total</th><th>Cód. barras</th><th>Motivo</th><th></th></tr>
+        </thead>
+        <tbody id="corpo"></tbody>
+        <tfoot id="rodape" class="hidden">
+          <tr><td colspan="6" style="text-align:right">Total filtrado</td>
+              <td class="val" id="totalQtd">0</td>
+              <td class="val" id="totalFiltro">R$ 0,00</td><td colspan="3"></td></tr>
+        </tfoot>
+      </table></div>
+      <div class="empty" id="vazio">Nenhum excedente registrado.</div>
+    </div>
+
+    <div class="panel">
+      <div class="sh">Top 10 códigos mais registrados<em>respeita os filtros acima</em></div>
+      <div class="tw"><table>
+        <thead><tr><th style="width:40px">#</th><th>Cód</th><th>Produto</th><th class="r">Unidades</th><th class="r">Valor acumulado</th></tr></thead>
+        <tbody id="corpoTop"></tbody>
+      </table></div>
+      <div class="empty hidden" id="vazioTop">Sem dados para ranquear.</div>
+    </div>
+  </section>
+
+  <!-- PRODUTOS -->
+  <section class="hidden" id="tab-prod">
+    <div class="panel">
+      <div class="sh">Cadastro em massa<em>um por linha: COD  ou  COD ; PRODUTO  ou  COD ; PRODUTO ; VALOR</em></div>
+      <div class="row"><div class="f full">
+        <label for="loteProd" class="hidden">Produtos</label>
+        <textarea id="loteProd" placeholder="1024&#10;1025 ; Película 3D iPhone 15&#10;1026 ; Carregador Turbo 20W ; 89,90"></textarea>
+      </div></div>
+      <div class="actions">
+        <button class="pri" id="addLoteProd">Cadastrar produtos</button>
+        <button class="ghost" id="limpaLoteProd">Limpar caixa</button>
+        <span class="msg" id="msgProd"></span>
+        <span class="hint">Cód repetido atualiza o nome; valor só muda se você informar</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="sh">Produtos cadastrados</div>
+      <div class="toolbar"><input id="buscaProd" placeholder="Filtrar produtos…"></div>
+      <div class="tw"><table>
+        <thead><tr><th>Cód</th><th>Produto</th><th class="r">Valor</th><th>Uso</th><th></th></tr></thead>
+        <tbody id="corpoProd"></tbody>
+      </table></div>
+      <div class="empty hidden" id="vazioProd">Nenhum produto cadastrado.</div>
+    </div>
+  </section>
+
+  <!-- DESTINOS -->
+  <section class="hidden" id="tab-dest">
+    <div class="panel">
+      <div class="sh">Cadastro em massa<em>um destino por linha</em></div>
+      <div class="row"><div class="f full">
+        <label for="loteDest" class="hidden">Destinos</label>
+        <textarea id="loteDest" placeholder="Salvador Shopping&#10;Shopping Barra&#10;Shopping da Bahia&#10;Centro de Distribuição"></textarea>
+      </div></div>
+      <div class="actions">
+        <button class="pri" id="addLoteDest">Cadastrar destinos</button>
+        <button class="ghost" id="limpaLoteDest">Limpar caixa</button>
+        <span class="msg" id="msgDest"></span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="sh">Destinos cadastrados</div>
+      <div class="tw"><table>
+        <thead><tr><th>Destino</th><th>Uso</th><th></th></tr></thead>
+        <tbody id="corpoDest"></tbody>
+      </table></div>
+      <div class="empty hidden" id="vazioDest">Nenhum destino cadastrado.</div>
+    </div>
+  </section>
+
+  <!-- RESPONSÁVEIS -->
+  <section class="hidden" id="tab-resp">
+    <div class="panel">
+      <div class="sh">Novo responsável<em>quem faz o envio</em></div>
+      <div class="row">
+        <div class="f"><label for="novoResp">Nome</label><input id="novoResp" placeholder="Nome de quem envia"></div>
+        <div class="f"><label for="loteResp">Cadastro em massa <small>· um nome por linha</small></label>
+          <textarea id="loteResp" style="min-height:96px" placeholder="Rodrigo Pereira&#10;Suiane Lopes&#10;Raquel França"></textarea></div>
+      </div>
+      <div class="actions">
+        <button class="pri" id="addResp">Cadastrar responsável</button>
+        <button id="addLoteResp" class="ghost">Cadastrar lista</button>
+        <span class="msg" id="msgResp"></span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="sh">Responsáveis</div>
+      <div class="tw"><table>
+        <thead><tr><th>Responsável</th><th>Envios</th><th class="r">Valor enviado</th><th></th></tr></thead>
+        <tbody id="corpoResp"></tbody>
+      </table></div>
+      <div class="empty hidden" id="vazioResp">Nenhum responsável cadastrado.</div>
+    </div>
+  </section>
+
+  <!-- MOTIVOS -->
+  <section class="hidden" id="tab-mot">
+    <div class="panel">
+      <div class="sh">Novo motivo</div>
+      <div class="row">
+        <div class="f"><label for="novoMotivo">Motivo</label><input id="novoMotivo" placeholder="Ex.: Excedente de grade"></div>
+        <div class="f grow"><label for="descMotivo">Descrição <small>· opcional</small></label><input id="descMotivo" placeholder="Quando usar este motivo"></div>
+      </div>
+      <div class="actions">
+        <button class="pri" id="addMotivo">Cadastrar motivo</button>
+        <span class="hint">Motivos cadastrados aparecem no formulário de lançamento</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="sh">Motivos</div>
+      <div class="tw"><table>
+        <thead><tr><th>Motivo</th><th>Descrição</th><th>Uso</th><th></th></tr></thead>
+        <tbody id="corpoMotivos"></tbody>
+      </table></div>
+      <div class="empty hidden" id="vazioMotivos">Nenhum motivo cadastrado.</div>
+    </div>
+  </section>
+
+</div>
+<div id="status"></div>
+
+<script>
+/* ================= Supabase ================= */
+const SUPABASE_URL = 'https://fevhyllvfhvzzfhwyjuk.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldmh5bGx2Zmh2enpmaHd5anVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzEyMTcsImV4cCI6MjA5NDQ0NzIxN30.GJRgEKW1bVWX1957_bKCTO6aVmR_rXWRCmo9-ZJDPiE';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const $ = id => document.getElementById(id);
+
+/* ---- estado local (espelho do banco) ---- */
+let produtos = [], destinos = [], responsaveis = [], motivos = [], itens = [];
+
+/* ---- feedback ---- */
+let statusTimer;
+function status(txt, tipo){
+  const el = $('status');
+  el.textContent = txt;
+  el.className = 'on ' + (tipo || '');
+  clearTimeout(statusTimer);
+  if(tipo !== 'load') statusTimer = setTimeout(() => el.classList.remove('on'), 2200);
+}
+async function run(promise, okMsg){
+  status('Salvando…', 'load');
+  const { error } = await promise;
+  if(error){ status('Erro: ' + error.message, 'err'); console.error(error); return false; }
+  if(okMsg) status(okMsg, 'ok'); else status('Salvo', 'ok');
+  return true;
+}
+
+/* ---- tema ---- */
+const html = document.documentElement;
+function aplicaTema(t){
+  html.setAttribute('data-theme', t);
+  $('btnTheme').textContent = t === 'dark' ? '☀️ Claro' : '🌙 Escuro';
+  localStorage.setItem('excedentes_tema', t);
+}
+$('btnTheme').onclick = () => aplicaTema(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+aplicaTema(localStorage.getItem('excedentes_tema') || 'light');
+
+/* ---- abas ---- */
+const ABAS = ['exc','hist','prod','dest','resp','mot'];
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  ABAS.forEach(k => $('tab-'+k).classList.toggle('hidden', k !== t.dataset.tab));
+});
+
+/* ---- moeda ---- */
+const brl = n => (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const num = s => {
+  s = String(s ?? '').trim().replace(/[R$\s]/g,'');
+  if(!s) return 0;
+  if(s.includes(',')) s = s.replace(/\./g,'').replace(',','.');
+  return parseFloat(s) || 0;
+};
+
+/* ================= carga inicial ================= */
+async function carregar(){
+  status('Carregando…', 'load');
+  const [p,d,r,mo,ex] = await Promise.all([
+    sb.from('exc_produtos').select('*').order('cod'),
+    sb.from('exc_destinos').select('*').order('nome'),
+    sb.from('exc_responsaveis').select('*').order('nome'),
+    sb.from('exc_motivos').select('*').order('nome'),
+    sb.from('exc_registros').select('*').order('created_at', {ascending:false})
+  ]);
+  const err = [p,d,r,mo,ex].find(x => x.error);
+  if(err){ status('Erro ao carregar: ' + err.error.message, 'err'); console.error(err.error); return; }
+
+  produtos = (p.data||[]).map(x => ({cod:x.cod, nome:x.nome, valor:Number(x.valor)||0}));
+  destinos = d.data||[];
+  responsaveis = r.data||[];
+  motivos = (mo.data||[]).map(x => ({id:x.id, nome:x.nome, desc:x.descricao||''}));
+  itens = (ex.data||[]).map(x => ({
+    id:x.id, numero:x.numero, data:x.data, destino:x.destino, responsavel:x.responsavel,
+    cod:x.cod, produto:x.produto, valor:Number(x.valor)||0, barras:x.barras,
+    quantidade:Number(x.quantidade)||1, valorUnit:Number(x.valor_unit)||0,
+    motivoId:x.motivo_id, motivoNome:x.motivo_nome
+  }));
+  render();
+  status('Conectado', 'ok');
+}
+
+/* ---- cód -> produto automático ---- */
+$('cod').addEventListener('input', () => {
+  const p = produtos.find(p => p.cod.toLowerCase() === $('cod').value.trim().toLowerCase());
+  if(p){
+    $('produto').value = p.nome;
+    $('valor').value = p.valor > 0 ? p.valor.toFixed(2).replace('.',',') : '';
+  }
+  resumo();
+});
+$('cod').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); $('barras').focus(); } });
+$('valor').addEventListener('blur', () => { if($('valor').value) $('valor').value = num($('valor').value).toFixed(2).replace('.',','); resumo(); });
+$('valor').addEventListener('input', resumo);
+$('barras').addEventListener('input', resumo);
+
+/* lista de códigos bipados (um por linha, sem vazios) */
+function codigosBarras(){
+  return $('barras').value.split('\n').map(l => l.trim()).filter(Boolean);
+}
+/* atualiza o indicador "N un · Total" ao vivo */
+function resumo(){
+  const qtd = codigosBarras().length;
+  const total = num($('valor').value) * qtd;
+  $('resumoQt').textContent = `${qtd} un · ${brl(total)}`;
+}
+
+/* ================= produtos ================= */
+$('addLoteProd').onclick = async () => {
+  const linhas = $('loteProd').value.split('\n').map(l => l.trim()).filter(Boolean);
+  if(!linhas.length) return alerta('loteProd','Cole os produtos na caixa, um por linha.');
+  const rows = []; let erros = [];
+  linhas.forEach((l,i) => {
+    const p = l.split(/[;\t|]/).map(x => x.trim());
+    const cod = p[0]; if(!cod) return erros.push(i+1);
+    const nome = p[1] || cod;
+    const valorInf = num(p[2]);
+    const existe = produtos.find(x => x.cod.toLowerCase() === cod.toLowerCase());
+    // preserva valor já aprendido quando a linha não traz valor novo
+    const valor = valorInf > 0 ? valorInf : (existe ? existe.valor : 0);
+    rows.push({cod, nome, valor});
+  });
+  if(!rows.length) return alerta('loteProd','Nenhuma linha válida.');
+  const ok = await run(sb.from('exc_produtos').upsert(rows, {onConflict:'cod'}), `${rows.length} produto(s) gravado(s)`);
+  if(!ok) return;
+  $('loteProd').value = '';
+  $('msgProd').textContent = `${rows.length} produto(s) gravado(s)` + (erros.length ? ` · linhas ignoradas: ${erros.join(', ')}` : '');
+  await carregar();
+};
+$('limpaLoteProd').onclick = () => { $('loteProd').value = ''; $('msgProd').textContent = ''; };
+$('buscaProd').oninput = render;
+async function delProd(cod){
+  if(!confirm('Excluir este produto do cadastro?')) return;
+  if(await run(sb.from('exc_produtos').delete().eq('cod', cod), 'Produto excluído')) await carregar();
+}
+
+/* ================= destinos ================= */
+$('addLoteDest').onclick = async () => {
+  const linhas = $('loteDest').value.split('\n').map(l => l.trim()).filter(Boolean);
+  if(!linhas.length) return alerta('loteDest','Cole os destinos na caixa, um por linha.');
+  const novos = linhas.filter(d => !destinos.some(x => x.nome.toLowerCase() === d.toLowerCase()));
+  if(!novos.length){ $('msgDest').textContent = 'Todos já existiam.'; return; }
+  if(await run(sb.from('exc_destinos').insert(novos.map(nome => ({nome}))), `${novos.length} destino(s) cadastrado(s)`)){
+    $('loteDest').value = '';
+    $('msgDest').textContent = `${novos.length} cadastrado(s), ${linhas.length - novos.length} já existia(m)`;
+    await carregar();
+  }
+};
+$('limpaLoteDest').onclick = () => { $('loteDest').value = ''; $('msgDest').textContent = ''; };
+async function delDest(id){
+  if(!confirm('Excluir este destino do cadastro?')) return;
+  if(await run(sb.from('exc_destinos').delete().eq('id', id), 'Destino excluído')) await carregar();
+}
+
+/* ================= responsáveis ================= */
+async function addResps(lista){
+  const novos = lista.filter(r => r && !responsaveis.some(x => x.nome.toLowerCase() === r.toLowerCase()));
+  if(!novos.length){ $('msgResp').textContent = 'Todos já existiam.'; return; }
+  if(await run(sb.from('exc_responsaveis').insert(novos.map(nome => ({nome}))), `${novos.length} responsável(is) cadastrado(s)`)){
+    $('msgResp').textContent = `${novos.length} cadastrado(s), ${lista.length - novos.length} já existia(m)`;
+    await carregar();
+  }
+}
+$('addResp').onclick = () => {
+  const n = $('novoResp').value.trim();
+  if(!n) return alerta('novoResp','Informe o nome do responsável.');
+  addResps([n]); $('novoResp').value = '';
+};
+$('addLoteResp').onclick = () => {
+  const l = $('loteResp').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if(!l.length) return alerta('loteResp','Cole os nomes na caixa, um por linha.');
+  addResps(l); $('loteResp').value = '';
+};
+async function delResp(id, nome){
+  const uso = itens.filter(i => i.responsavel === nome).length;
+  if(uso && !confirm(`Este responsável está em ${uso} envio(s). Excluir mesmo assim?`)) return;
+  if(!uso && !confirm('Excluir este responsável?')) return;
+  if(await run(sb.from('exc_responsaveis').delete().eq('id', id), 'Responsável excluído')) await carregar();
+}
+
+/* ================= motivos ================= */
+$('addMotivo').onclick = async () => {
+  const nome = $('novoMotivo').value.trim();
+  if(!nome) return alerta('novoMotivo','Informe o nome do motivo.');
+  if(motivos.some(m => m.nome.toLowerCase() === nome.toLowerCase())) return alerta('novoMotivo','Esse motivo já está cadastrado.');
+  if(await run(sb.from('exc_motivos').insert({nome, descricao: $('descMotivo').value.trim()}), 'Motivo cadastrado')){
+    $('novoMotivo').value = ''; $('descMotivo').value = ''; await carregar();
+  }
+};
+async function delMotivo(id){
+  const uso = itens.filter(v => v.motivoId === id).length;
+  if(uso && !confirm(`Este motivo está em ${uso} registro(s). Excluir mesmo assim? (o histórico mantém o nome)`)) return;
+  if(!uso && !confirm('Excluir este motivo?')) return;
+  if(await run(sb.from('exc_motivos').delete().eq('id', id), 'Motivo excluído')) await carregar();
+}
+
+/* ================= registro ================= */
+$('salvar').onclick = salvar;
+
+function proxNumero(){
+  let max = 0;
+  itens.forEach(m => { const g = /^EX-(\d+)$/.exec(m.numero || ''); if(g) max = Math.max(max, +g[1]); });
+  return 'EX-' + String(max + 1).padStart(4,'0');
+}
+
+async function salvar(){
+  const numero  = $('numero').value.trim() || proxNumero();
+  const data    = $('data').value;
+  const destino = $('destino').value;
+  const responsavel = $('responsavel').value;
+  const cod     = $('cod').value.trim();
+  const produto = $('produto').value.trim();
+  const unit    = num($('valor').value);
+  const codigos = codigosBarras();
+  const motivoId= Number($('motivo').value);
+
+  if(!data)        return alerta('data','Informe a data de envio.');
+  if(!destino)     return alerta('destino','Selecione o destino.');
+  if(!responsavel) return alerta('responsavel','Selecione o responsável pelo envio.');
+  if(!produto)     return alerta('produto','Informe o produto ou digite um cód cadastrado.');
+  if(!codigos.length) return alerta('barras','Bipe pelo menos um código de barras.');
+  if(!motivoId)    return alerta('motivo','Selecione um motivo.');
+
+  // bloqueia código de barras duplicado na mesma caixa
+  const vistos = new Set(), dups = new Set();
+  codigos.forEach(c => { const k = c.toLowerCase(); if(vistos.has(k)) dups.add(c); else vistos.add(k); });
+  if(dups.size){
+    $('barras').focus();
+    return alert('Código de barras duplicado — corrija antes de registrar:\n\n' + [...dups].join('\n'));
+  }
+
+  const qtd   = codigos.length;
+  const total = +(unit * qtd).toFixed(2);
+  const barrasStr = codigos.join(' | ');
+  const motivoNome = nomeMotivo(motivoId);
+  $('salvar').disabled = true;
+
+  const ok = await run(sb.from('exc_registros').insert({
+    numero, data, destino, responsavel, cod, produto,
+    valor: total, valor_unit: unit, quantidade: qtd, barras: barrasStr,
+    motivo_id: motivoId, motivo_nome: motivoNome
+  }), `${numero} registrado`);
+
+  if(ok){
+    // --- aprende o valor UNITÁRIO no cadastro do produto ---
+    let aprendeu = false;
+    if(cod && unit > 0){
+      const p = produtos.find(x => x.cod.toLowerCase() === cod.toLowerCase());
+      if(p){
+        if(!(p.valor > 0)){ await sb.from('exc_produtos').update({valor:unit}).eq('cod', p.cod); aprendeu = true; }
+      } else {
+        await sb.from('exc_produtos').upsert({cod, nome:produto, valor:unit}, {onConflict:'cod'}); aprendeu = true;
+      }
+    }
+    ['numero','cod','produto','valor','barras'].forEach(i => $(i).value = '');
+    resumo();
+    $('msgSalvo').textContent = `${numero} · ${qtd} un · ${brl(total)}` + (aprendeu ? ` · valor fixado no cód ${cod}` : '');
+    setTimeout(() => { $('msgSalvo').textContent = ''; }, 4000);
+    $('cod').focus();
+    await carregar();
+  }
+  $('salvar').disabled = false;
+}
+
+$('limpar').onclick = () => {
+  ['numero','cod','produto','valor','barras'].forEach(i => $(i).value = '');
+  $('motivo').value = ''; $('cod').focus();
+};
+['busca','fDest','fResp','fMot'].forEach(i => $(i).addEventListener('input', render));
+$('limpaFiltro').onclick = () => { ['busca','fDest','fResp','fMot'].forEach(i => $(i).value = ''); render(); };
+
+/* ---- filtros ---- */
+function filtrados(){
+  const q = $('busca').value.toLowerCase();
+  return itens.filter(m =>
+    [m.numero,m.destino,m.responsavel,m.cod,m.produto,m.barras,labelMotivo(m)].join(' ').toLowerCase().includes(q)
+    && (!$('fDest').value || m.destino === $('fDest').value)
+    && (!$('fResp').value || m.responsavel === $('fResp').value)
+    && (!$('fMot').value  || String(m.motivoId) === $('fMot').value));
+}
+
+/* ================= render ================= */
+function render(){
+  const optV = (arr, ph) => `<option value="">${ph}</option>` + arr.map(d => `<option>${esc(d)}</option>`).join('');
+  const keep = (el, h) => { const v = el.value; el.innerHTML = h; el.value = v; };
+  const nomesDest = destinos.map(d => d.nome);
+  const nomesResp = responsaveis.map(r => r.nome);
+
+  keep($('destino'),     optV(nomesDest, 'Selecione…'));
+  keep($('responsavel'), optV(nomesResp, 'Selecione…'));
+  keep($('motivo'), '<option value="">Selecione…</option>' + motivos.map(m => `<option value="${m.id}">${esc(m.nome)}</option>`).join(''));
+  $('codigos').innerHTML = produtos.map(p => `<option value="${esc(p.cod)}">${esc(p.nome)}</option>`).join('');
+
+  keep($('fDest'), optV(nomesDest, 'Todos os destinos'));
+  keep($('fResp'), optV(nomesResp, 'Todos os responsáveis'));
+  keep($('fMot'),  '<option value="">Todos os motivos</option>' + motivos.map(m => `<option value="${m.id}">${esc(m.nome)}</option>`).join(''));
+
+  $('ultimos').innerHTML = itens.slice(0,5).map(m => `<tr>
+    <td class="num">${esc(m.numero)}</td><td>${codHtml(m.cod)}</td><td>${esc(m.produto)}</td>
+    <td class="val">${m.quantidade}</td><td class="val">${brl(m.valor)}</td><td>${esc(m.destino)}</td><td>${whoHtml(m.responsavel)}</td>
+  </tr>`).join('');
+  $('vazioUlt').classList.toggle('hidden', itens.length > 0);
+
+  const lista = filtrados();
+  $('corpo').innerHTML = lista.map(m => `<tr>
+    <td class="num">${esc(m.numero)}</td>
+    <td class="m">${fmtData(m.data)}</td>
+    <td>${esc(m.destino)}</td>
+    <td>${whoHtml(m.responsavel)}</td>
+    <td>${codHtml(m.cod)}</td>
+    <td>${esc(m.produto)}</td>
+    <td class="val">${m.quantidade}</td>
+    <td class="val">${brl(m.valor)}</td>
+    <td class="m">${cellBarras(m)}</td>
+    <td>${chipHtml(labelMotivo(m))}</td>
+    <td><button class="del" onclick="delItem(${m.id})" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazio').classList.toggle('hidden', lista.length > 0);
+  $('vazio').textContent = itens.length ? 'Nenhum registro corresponde aos filtros.' : 'Nenhum excedente registrado.';
+  $('rodape').classList.toggle('hidden', !lista.length);
+  $('totalQtd').textContent = lista.reduce((s,m) => s + m.quantidade, 0);
+  $('totalFiltro').textContent = brl(soma(lista));
+  $('count').textContent = itens.length + (itens.length === 1 ? ' registro' : ' registros');
+  $('total').textContent = brl(soma(itens));
+
+  cards(lista); topCodigos(lista);
+
+  const qp = $('buscaProd').value.toLowerCase();
+  const lp = produtos.filter(p => (p.cod + ' ' + p.nome).toLowerCase().includes(qp));
+  $('corpoProd').innerHTML = lp.map(p => `<tr>
+    <td>${codHtml(p.cod)}</td><td>${esc(p.nome)}</td>
+    <td class="val">${p.valor > 0 ? brl(p.valor) : '<span class="chip c0">a definir</span>'}</td>
+    <td class="m">${itens.filter(i => i.cod === p.cod).length}</td>
+    <td><button class="del" onclick="delProd('${js(p.cod)}')" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazioProd').classList.toggle('hidden', lp.length > 0);
+
+  $('corpoDest').innerHTML = destinos.map(d => `<tr>
+    <td>${esc(d.nome)}</td><td class="m">${itens.filter(i => i.destino === d.nome).length}</td>
+    <td><button class="del" onclick="delDest(${d.id})" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazioDest').classList.toggle('hidden', destinos.length > 0);
+
+  $('corpoResp').innerHTML = responsaveis.map(r => {
+    const env = itens.filter(i => i.responsavel === r.nome);
+    return `<tr><td>${whoHtml(r.nome)}</td><td class="m">${env.length}</td>
+      <td class="val">${brl(soma(env))}</td>
+      <td><button class="del" onclick="delResp(${r.id},'${js(r.nome)}')" title="Excluir">×</button></td></tr>`;
+  }).join('');
+  $('vazioResp').classList.toggle('hidden', responsaveis.length > 0);
+
+  $('corpoMotivos').innerHTML = motivos.map(m => `<tr>
+    <td>${chipHtml(m.nome)}</td><td>${esc(m.desc) || '—'}</td>
+    <td class="m">${itens.filter(v => v.motivoId === m.id).length}</td>
+    <td><button class="del" onclick="delMotivo(${m.id})" title="Excluir">×</button></td>
+  </tr>`).join('');
+  $('vazioMotivos').classList.toggle('hidden', motivos.length > 0);
+}
+
+/* ---- indicadores ---- */
+function cards(lista){
+  $('cRegs').textContent  = lista.length;
+  $('cTotal').textContent = brl(soma(lista));
+  $('cMedia').textContent = 'média ' + brl(lista.length ? soma(lista)/lista.length : 0);
+  const datas = lista.map(m => m.data).filter(Boolean).sort();
+  $('cPeriodo').textContent = datas.length ? `${fmtData(datas[0])} a ${fmtData(datas[datas.length-1])}` : '—';
+  const rk = ranking(lista);
+  $('cTop').textContent = rk.length ? rk[0].cod : '—';
+  $('cTopDesc').textContent = rk.length ? `${rk[0].qtd} un · ${rk[0].nome}` : '—';
+  const pd = {};
+  lista.forEach(m => pd[m.destino] = (pd[m.destino]||0) + 1);
+  const top = Object.entries(pd).sort((a,b) => b[1]-a[1])[0];
+  $('cDest').textContent = top ? top[0] : '—';
+  $('cDestDesc').textContent = top ? `${top[1]} registro(s)` : '—';
+}
+function ranking(lista){
+  const map = {};
+  lista.forEach(m => {
+    const k = m.cod || '(sem cód)';
+    if(!map[k]) map[k] = {cod:k, nome:m.produto, qtd:0, valor:0};
+    map[k].qtd += (m.quantidade || 1);   // conta por unidades
+    map[k].valor += m.valor;
+  });
+  return Object.values(map).sort((a,b) => b.qtd - a.qtd || b.valor - a.valor);
+}
+function topCodigos(lista){
+  const rk = ranking(lista).slice(0,10);
+  const max = rk.length ? rk[0].qtd : 1;
+  $('corpoTop').innerHTML = rk.map((r,i) => `<tr>
+    <td class="pos">${String(i+1).padStart(2,'0')}</td>
+    <td>${codHtml(r.cod)}</td>
+    <td class="rank"><div class="bar" style="width:${(r.qtd/max*100).toFixed(1)}%"></div><span>${esc(r.nome)}</span></td>
+    <td class="val">${r.qtd} un</td><td class="val">${brl(r.valor)}</td>
+  </tr>`).join('');
+  $('vazioTop').classList.toggle('hidden', rk.length > 0);
+}
+
+async function delItem(id){
+  if(!confirm('Excluir este lançamento?')) return;
+  if(await run(sb.from('exc_registros').delete().eq('id', id), 'Lançamento excluído')) await carregar();
+}
+
+/* ---- CSV ---- */
+$('csv').onclick = () => {
+  const lista = filtrados();
+  if(!lista.length) return alert('Não há excedentes para exportar.');
+  const linhas = [['Numero','Data','Destino','Responsavel','Cod','Produto','Qtd','Valor unit','Valor total','Codigos de barras','Motivo']]
+    .concat(lista.map(m => [m.numero, m.data, m.destino, m.responsavel, m.cod, m.produto,
+      m.quantidade, m.valorUnit.toFixed(2).replace('.',','), m.valor.toFixed(2).replace('.',','),
+      m.barras, labelMotivo(m)]));
+  const csv = '\ufeff' + linhas.map(l => l.map(c => `"${String(c ?? '').replace(/"/g,'""')}"`).join(';')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download = 'excedentes.csv'; a.click();
+};
+
+/* ---- utils ---- */
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const js  = s => String(s ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+const soma = l => l.reduce((s,m) => s + m.valor, 0);
+/* mostra 1 código direto; vários viram "N códigos" com a lista no hover */
+function cellBarras(m){
+  const lista = String(m.barras || '').split(' | ').filter(Boolean);
+  if(lista.length <= 1) return esc(m.barras || '—');
+  return `<span title="${esc(lista.join('\n'))}">${lista.length} códigos</span>`;
+}
+/* ---- visual: cor estável por nome, iniciais e etiquetas ---- */
+const corDe = s => { let h = 0; String(s ?? '').split('').forEach(c => h = (h*31 + c.charCodeAt(0)) >>> 0); return 'c' + (h % 5); };
+const iniciais = s => String(s ?? '').trim().split(/\s+/).filter(Boolean).slice(0,2).map(p => p[0]).join('').toUpperCase() || '?';
+const whoHtml = n => `<span class="who"><i class="av ${corDe(n)}">${esc(iniciais(n))}</i>${esc(n)}</span>`;
+const chipHtml = n => `<span class="chip ${corDe(n)}">${esc(n)}</span>`;
+const codHtml = c => c ? `<span class="cod">${esc(c)}</span>` : '—';
+const nomeMotivo = id => (motivos.find(m => m.id === id) || {}).nome || '';
+const labelMotivo = m => nomeMotivo(m.motivoId) || m.motivoNome || 'Motivo excluído';
+const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
+function alerta(campo, msg){ alert(msg); $(campo).focus(); }
+
+$('data').value = new Date().toISOString().slice(0,10);
+carregar();
+</script>
+</body>
+</html>
